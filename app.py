@@ -5,7 +5,7 @@ st.set_page_config(page_title="Risk Management Game", layout="wide")
 
 contract_size = 100000
 
-# Fixed data from your picture
+# Fixed data
 base_df = pd.DataFrame({
     "Day": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     "Position Client": [10, 20, 30, 40, 40, 30, 20, 10, 0, 0],
@@ -13,7 +13,7 @@ base_df = pd.DataFrame({
     "Market Price": [1.5050, 1.5000, 1.4050, 1.4000, 1.3050, 1.4000, 1.4050, 1.5000, 1.5000, 1.5050]
 })
 
-# Session state setup
+# Session state
 if "current_day_index" not in st.session_state:
     st.session_state.current_day_index = 0
 
@@ -36,7 +36,7 @@ if "game_df" not in st.session_state:
 
 st.title("Market Risk Management Game")
 
-# Reset button
+# Restart button
 if st.button("Restart Game"):
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
@@ -54,33 +54,33 @@ if st.button("Restart Game"):
     ])
     st.rerun()
 
-# Check if game finished
+# Current day or finish
 if st.session_state.current_day_index >= len(base_df):
     st.success("Game finished.")
-    st.dataframe(st.session_state.game_df, use_container_width=True)
 else:
     row = base_df.loc[st.session_state.current_day_index]
 
     day = int(row["Day"])
-    client_position = row["Position Client"]
-    open_price = row["Open Price"]
-    market_price = row["Market Price"]
+    client_position = int(row["Position Client"])
+    open_price = float(row["Open Price"])
+    market_price = float(row["Market Price"])
 
     st.subheader(f"Day {day}")
-    st.write(f"**Client Position:** {client_position}")
+    st.write(f"**Client Position:** {client_position:,}")
     st.write(f"**Open Price:** {open_price:.4f}")
     st.write("Enter your hedge amount before revealing the market price.")
 
     with st.form(f"hedge_form_day_{day}"):
         hedge_position = st.number_input(
             "Hedge Amount",
-            value=0.0,
-            step=1.0,
-            format="%.2f"
+            min_value=0,
+            step=1,
+            value=0
         )
         submitted = st.form_submit_button("Submit Hedge")
 
     if submitted:
+        hedge_position = int(hedge_position)
         company_position = client_position - hedge_position
 
         profit_client = (market_price - open_price) * client_position * contract_size
@@ -107,15 +107,42 @@ else:
             ignore_index=True
         )
 
-        st.session_state.current_day_index += 1
-
         st.success(f"Day {day} completed")
         st.write(f"**Market Price revealed:** {market_price:.4f}")
         st.write(f"**Profit Company this day:** {profit_company:,.0f}")
 
+        st.session_state.current_day_index += 1
         st.rerun()
 
-# Always show progress table
+# Show progress table
 if not st.session_state.game_df.empty:
     st.subheader("Game Progress")
-    st.dataframe(st.session_state.game_df, use_container_width=True)
+
+    display_df = st.session_state.game_df.copy()
+
+    display_df["Day"] = display_df["Day"].astype(int)
+    display_df["Position Client"] = display_df["Position Client"].map(lambda x: f"{int(x):,}")
+    display_df["Position Hedge"] = display_df["Position Hedge"].map(lambda x: f"{int(x):,}")
+    display_df["Position Company"] = display_df["Position Company"].map(lambda x: f"{int(x):,}")
+    display_df["Open Price"] = display_df["Open Price"].map(lambda x: f"{float(x):.4f}")
+    display_df["Market Price"] = display_df["Market Price"].map(lambda x: f"{float(x):.4f}")
+    display_df["Profit Client"] = display_df["Profit Client"].map(lambda x: f"{int(x):,}")
+    display_df["Profit Hedge"] = display_df["Profit Hedge"].map(lambda x: f"{int(x):,}")
+    display_df["Profit Company"] = display_df["Profit Company"].map(lambda x: f"{int(x):,}")
+    display_df["Cumulative Profit Company"] = display_df["Cumulative Profit Company"].map(lambda x: f"{int(x):,}")
+
+    st.dataframe(display_df, use_container_width=True)
+
+    st.subheader("Position Chart")
+    position_chart_df = st.session_state.game_df[[
+        "Day", "Position Client", "Position Hedge", "Position Company"
+    ]].copy()
+    position_chart_df = position_chart_df.set_index("Day")
+    st.line_chart(position_chart_df)
+
+    st.subheader("Profit Chart")
+    profit_chart_df = st.session_state.game_df[[
+        "Day", "Profit Client", "Profit Hedge", "Profit Company"
+    ]].copy()
+    profit_chart_df = profit_chart_df.set_index("Day")
+    st.line_chart(profit_chart_df)
