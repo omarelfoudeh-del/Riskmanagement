@@ -141,7 +141,7 @@ else:
     for col in game_columns[1:]:
         merged_df[col] = np.nan
 
-def make_line_chart(df, columns, title, color_map):
+def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f"):
     chart_df = df[["Day"] + columns].copy()
     long_df = chart_df.melt(id_vars="Day", var_name="Series", value_name="Value")
 
@@ -149,8 +149,12 @@ def make_line_chart(df, columns, title, color_map):
         alt.Chart(long_df)
         .mark_line(point=True, strokeWidth=3)
         .encode(
-            x=alt.X("Day:Q", scale=alt.Scale(domain=[1, 10]), axis=alt.Axis(tickMinStep=1)),
-            y=alt.Y("Value:Q"),
+            x=alt.X("Day:Q", scale=alt.Scale(domain=[1, 10]), axis=alt.Axis(values=list(range(1, 11)), title="Day")),
+            y=alt.Y(
+                "Value:Q",
+                scale=alt.Scale(domain=y_domain) if y_domain else alt.Undefined,
+                axis=alt.Axis(format=y_format, title=None)
+            ),
             color=alt.Color(
                 "Series:N",
                 scale=alt.Scale(
@@ -159,24 +163,63 @@ def make_line_chart(df, columns, title, color_map):
                 ),
                 legend=alt.Legend(title="")
             ),
-            tooltip=["Day", "Series", "Value"]
+            tooltip=[
+                alt.Tooltip("Day:Q"),
+                alt.Tooltip("Series:N"),
+                alt.Tooltip("Value:Q", format=y_format)
+            ]
         )
-        .properties(title=title, height=350)
+        .properties(title=title, height=380)
     )
 
     st.altair_chart(chart, use_container_width=True)
 
+def make_bar_chart(df, column, title):
+    chart_df = df[["Day", column]].copy()
+    chart_df["Color"] = np.where(chart_df[column] >= 0, "Positive", "Negative")
+
+    chart = (
+        alt.Chart(chart_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Day:Q", scale=alt.Scale(domain=[1, 10]), axis=alt.Axis(values=list(range(1, 11)), title="Day")),
+            y=alt.Y(f"{column}:Q", axis=alt.Axis(format=",.0f", title=None)),
+            color=alt.Color(
+                "Color:N",
+                scale=alt.Scale(domain=["Positive", "Negative"], range=["#1f77b4", "#d62728"]),
+                legend=None
+            ),
+            tooltip=[
+                alt.Tooltip("Day:Q"),
+                alt.Tooltip(f"{column}:Q", format=",.0f")
+            ]
+        )
+        .properties(title=title, height=320)
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+st.subheader("Price Chart")
 make_line_chart(
     merged_df,
-    ["Position Client", "Position Hedge", "Position Company"],
-    "Position Chart",
+    ["Open Price", "Market Price"],
+    "Price Chart",
     {
-        "Position Client": "#1f77b4",
-        "Position Hedge": "#9ecae1",
-        "Position Company": "#d62728"
-    }
+        "Open Price": "#1f77b4",
+        "Market Price": "#d62728"
+    },
+    y_domain=[1.4900, 1.5100],
+    y_format=".4f"
 )
 
+st.subheader("Net Position")
+make_bar_chart(
+    merged_df,
+    "Position Company",
+    "Net Position (Company)"
+)
+
+st.subheader("Profit Chart")
 make_line_chart(
     merged_df,
     ["Profit Client", "Profit Hedge", "Profit Company"],
@@ -185,15 +228,6 @@ make_line_chart(
         "Profit Client": "#1f77b4",
         "Profit Hedge": "#9ecae1",
         "Profit Company": "#d62728"
-    }
-)
-
-make_line_chart(
-    merged_df,
-    ["Open Price", "Market Price"],
-    "Price Chart",
-    {
-        "Open Price": "#1f77b4",
-        "Market Price": "#d62728"
-    }
+    },
+    y_format=",.0f"
 )
