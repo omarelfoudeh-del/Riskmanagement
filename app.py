@@ -6,7 +6,6 @@ st.set_page_config(page_title="Risk Management Game", layout="wide")
 
 contract_size = 100000
 
-# Fixed data
 base_df = pd.DataFrame({
     "Day": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     "Position Client": [10, 20, 30, 40, 40, 30, 20, 10, 0, 0],
@@ -27,7 +26,6 @@ game_columns = [
     "Cumulative Profit Company"
 ]
 
-# Session state
 if "current_day_index" not in st.session_state:
     st.session_state.current_day_index = 0
 
@@ -39,14 +37,12 @@ if "game_df" not in st.session_state:
 
 st.title("Market Risk Management Game")
 
-# Restart
 if st.button("Restart Game"):
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
     st.rerun()
 
-# Main input area
 if st.session_state.current_day_index >= len(base_df):
     st.success("Game finished.")
 else:
@@ -63,21 +59,19 @@ else:
     st.write("Enter your hedge amount before revealing the market price.")
 
     with st.form(f"hedge_form_day_{day}"):
-        hedge_position = st.number_input(
-            "Hedge Amount",
-            min_value=0,
-            step=1,
-            value=None,
-            placeholder="Enter whole number"
-        )
+        hedge_input = st.text_input("Hedge Amount", placeholder="Enter whole number")
         submitted = st.form_submit_button("Submit Hedge")
 
     if submitted:
-        if hedge_position is None:
+        hedge_input = hedge_input.strip()
+
+        if hedge_input == "":
             st.warning("Please enter a hedge amount.")
+        elif not hedge_input.isdigit():
+            st.warning("Please enter a whole number only.")
         else:
-            hedge_position = int(hedge_position)
-            company_position = client_position - hedge_position
+            hedge_position = int(hedge_input)
+            company_position = hedge_position - client_position
 
             profit_client = (market_price - open_price) * client_position * contract_size
             profit_hedge = (market_price - open_price) * hedge_position * contract_size
@@ -110,7 +104,6 @@ else:
             st.session_state.current_day_index += 1
             st.rerun()
 
-# Table
 if not st.session_state.game_df.empty:
     st.subheader("Game Progress")
 
@@ -129,7 +122,6 @@ if not st.session_state.game_df.empty:
 
     st.dataframe(display_df, use_container_width=True)
 
-# Build charts across all 10 periods, with future periods blank
 chart_base = pd.DataFrame({"Day": base_df["Day"]})
 
 if not st.session_state.game_df.empty:
@@ -139,19 +131,16 @@ else:
     for col in game_columns[1:]:
         merged_df[col] = np.nan
 
-# Position chart
 st.subheader("Position Chart")
 position_chart_df = merged_df[["Day", "Position Client", "Position Hedge", "Position Company"]].copy()
 position_chart_df = position_chart_df.set_index("Day")
 st.line_chart(position_chart_df)
 
-# Profit chart
 st.subheader("Profit Chart")
 profit_chart_df = merged_df[["Day", "Profit Client", "Profit Hedge", "Profit Company"]].copy()
 profit_chart_df = profit_chart_df.set_index("Day")
 st.line_chart(profit_chart_df)
 
-# Price chart
 st.subheader("Price Chart")
 price_chart_df = merged_df[["Day", "Open Price", "Market Price"]].copy()
 price_chart_df = price_chart_df.set_index("Day")
