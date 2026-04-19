@@ -174,49 +174,29 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
 
     st.altair_chart(chart, use_container_width=True)
 
-def make_bar_chart(df, column, title):
-    chart_df = df[["Day", column]].copy()
-    chart_df["Color"] = np.where(chart_df[column] >= 0, "Positive", "Negative")
-
-    chart = (
-        alt.Chart(chart_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("Day:Q", scale=alt.Scale(domain=[1, 10]), axis=alt.Axis(values=list(range(1, 11)), title="Day")),
-            y=alt.Y(f"{column}:Q", axis=alt.Axis(format=",.0f", title=None)),
-            color=alt.Color(
-                "Color:N",
-                scale=alt.Scale(domain=["Positive", "Negative"], range=["#1f77b4", "#d62728"]),
-                legend=None
-            ),
-            tooltip=[
-                alt.Tooltip("Day:Q"),
-                alt.Tooltip(f"{column}:Q", format=",.0f")
-            ]
-        )
-        .properties(title=title, height=320)
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-
 st.subheader("Price Chart")
 make_line_chart(
     merged_df,
-    ["Open Price", "Market Price"],
+    ["Market Price"],
     "Price Chart",
     {
-        "Open Price": "#1f77b4",
         "Market Price": "#d62728"
     },
     y_domain=[1.4900, 1.5100],
     y_format=".4f"
 )
 
-st.subheader("Net Position")
-make_bar_chart(
+st.subheader("Position Chart")
+make_line_chart(
     merged_df,
-    "Position Company",
-    "Net Position (Company)"
+    ["Position Client", "Position Hedge", "Position Company"],
+    "Position Chart",
+    {
+        "Position Client": "#1f77b4",
+        "Position Hedge": "#9ecae1",
+        "Position Company": "#d62728"
+    },
+    y_format=",.0f"
 )
 
 st.subheader("Profit Chart")
