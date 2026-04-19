@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 st.set_page_config(page_title="Risk Management Game", layout="wide")
 
@@ -13,6 +14,19 @@ base_df = pd.DataFrame({
     "Market Price": [1.5050, 1.5000, 1.4050, 1.4000, 1.3050, 1.4000, 1.4050, 1.5000, 1.5000, 1.5050]
 })
 
+game_columns = [
+    "Day",
+    "Position Client",
+    "Position Hedge",
+    "Position Company",
+    "Open Price",
+    "Market Price",
+    "Profit Client",
+    "Profit Hedge",
+    "Profit Company",
+    "Cumulative Profit Company"
+]
+
 # Session state
 if "current_day_index" not in st.session_state:
     st.session_state.current_day_index = 0
@@ -21,40 +35,18 @@ if "cumulative_profit_company" not in st.session_state:
     st.session_state.cumulative_profit_company = 0
 
 if "game_df" not in st.session_state:
-    st.session_state.game_df = pd.DataFrame(columns=[
-        "Day",
-        "Position Client",
-        "Position Hedge",
-        "Position Company",
-        "Open Price",
-        "Market Price",
-        "Profit Client",
-        "Profit Hedge",
-        "Profit Company",
-        "Cumulative Profit Company"
-    ])
+    st.session_state.game_df = pd.DataFrame(columns=game_columns)
 
 st.title("Market Risk Management Game")
 
-# Restart button
+# Restart
 if st.button("Restart Game"):
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
-    st.session_state.game_df = pd.DataFrame(columns=[
-        "Day",
-        "Position Client",
-        "Position Hedge",
-        "Position Company",
-        "Open Price",
-        "Market Price",
-        "Profit Client",
-        "Profit Hedge",
-        "Profit Company",
-        "Cumulative Profit Company"
-    ])
+    st.session_state.game_df = pd.DataFrame(columns=game_columns)
     st.rerun()
 
-# Current day or finish
+# Main input area
 if st.session_state.current_day_index >= len(base_df):
     st.success("Game finished.")
 else:
@@ -75,46 +67,50 @@ else:
             "Hedge Amount",
             min_value=0,
             step=1,
-            value=0
+            value=None,
+            placeholder="Enter whole number"
         )
         submitted = st.form_submit_button("Submit Hedge")
 
     if submitted:
-        hedge_position = int(hedge_position)
-        company_position = client_position - hedge_position
+        if hedge_position is None:
+            st.warning("Please enter a hedge amount.")
+        else:
+            hedge_position = int(hedge_position)
+            company_position = client_position - hedge_position
 
-        profit_client = (market_price - open_price) * client_position * contract_size
-        profit_hedge = (market_price - open_price) * hedge_position * contract_size
-        profit_company = (market_price - open_price) * company_position * contract_size
+            profit_client = (market_price - open_price) * client_position * contract_size
+            profit_hedge = (market_price - open_price) * hedge_position * contract_size
+            profit_company = (market_price - open_price) * company_position * contract_size
 
-        st.session_state.cumulative_profit_company += profit_company
+            st.session_state.cumulative_profit_company += profit_company
 
-        new_row = pd.DataFrame([{
-            "Day": day,
-            "Position Client": client_position,
-            "Position Hedge": hedge_position,
-            "Position Company": company_position,
-            "Open Price": round(open_price, 4),
-            "Market Price": round(market_price, 4),
-            "Profit Client": round(profit_client, 0),
-            "Profit Hedge": round(profit_hedge, 0),
-            "Profit Company": round(profit_company, 0),
-            "Cumulative Profit Company": round(st.session_state.cumulative_profit_company, 0)
-        }])
+            new_row = pd.DataFrame([{
+                "Day": day,
+                "Position Client": client_position,
+                "Position Hedge": hedge_position,
+                "Position Company": company_position,
+                "Open Price": round(open_price, 4),
+                "Market Price": round(market_price, 4),
+                "Profit Client": round(profit_client, 0),
+                "Profit Hedge": round(profit_hedge, 0),
+                "Profit Company": round(profit_company, 0),
+                "Cumulative Profit Company": round(st.session_state.cumulative_profit_company, 0)
+            }])
 
-        st.session_state.game_df = pd.concat(
-            [st.session_state.game_df, new_row],
-            ignore_index=True
-        )
+            st.session_state.game_df = pd.concat(
+                [st.session_state.game_df, new_row],
+                ignore_index=True
+            )
 
-        st.success(f"Day {day} completed")
-        st.write(f"**Market Price revealed:** {market_price:.4f}")
-        st.write(f"**Profit Company this day:** {profit_company:,.0f}")
+            st.success(f"Day {day} completed")
+            st.write(f"**Market Price revealed:** {market_price:.4f}")
+            st.write(f"**Profit Company this day:** {profit_company:,.0f}")
 
-        st.session_state.current_day_index += 1
-        st.rerun()
+            st.session_state.current_day_index += 1
+            st.rerun()
 
-# Show progress table
+# Table
 if not st.session_state.game_df.empty:
     st.subheader("Game Progress")
 
@@ -133,16 +129,30 @@ if not st.session_state.game_df.empty:
 
     st.dataframe(display_df, use_container_width=True)
 
-    st.subheader("Position Chart")
-    position_chart_df = st.session_state.game_df[[
-        "Day", "Position Client", "Position Hedge", "Position Company"
-    ]].copy()
-    position_chart_df = position_chart_df.set_index("Day")
-    st.line_chart(position_chart_df)
+# Build charts across all 10 periods, with future periods blank
+chart_base = pd.DataFrame({"Day": base_df["Day"]})
 
-    st.subheader("Profit Chart")
-    profit_chart_df = st.session_state.game_df[[
-        "Day", "Profit Client", "Profit Hedge", "Profit Company"
-    ]].copy()
-    profit_chart_df = profit_chart_df.set_index("Day")
-    st.line_chart(profit_chart_df)
+if not st.session_state.game_df.empty:
+    merged_df = chart_base.merge(st.session_state.game_df, on="Day", how="left")
+else:
+    merged_df = chart_base.copy()
+    for col in game_columns[1:]:
+        merged_df[col] = np.nan
+
+# Position chart
+st.subheader("Position Chart")
+position_chart_df = merged_df[["Day", "Position Client", "Position Hedge", "Position Company"]].copy()
+position_chart_df = position_chart_df.set_index("Day")
+st.line_chart(position_chart_df)
+
+# Profit chart
+st.subheader("Profit Chart")
+profit_chart_df = merged_df[["Day", "Profit Client", "Profit Hedge", "Profit Company"]].copy()
+profit_chart_df = profit_chart_df.set_index("Day")
+st.line_chart(profit_chart_df)
+
+# Price chart
+st.subheader("Price Chart")
+price_chart_df = merged_df[["Day", "Open Price", "Market Price"]].copy()
+price_chart_df = price_chart_df.set_index("Day")
+st.line_chart(price_chart_df)
