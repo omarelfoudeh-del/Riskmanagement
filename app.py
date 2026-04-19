@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import altair as alt
 
 st.set_page_config(page_title="Risk Management Game", layout="wide")
 
@@ -32,6 +33,9 @@ if "current_day_index" not in st.session_state:
 if "cumulative_profit_company" not in st.session_state:
     st.session_state.cumulative_profit_company = 0
 
+if "cumulative_hedge_position" not in st.session_state:
+    st.session_state.cumulative_hedge_position = 0
+
 if "game_df" not in st.session_state:
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
 
@@ -40,6 +44,7 @@ st.title("Market Risk Management Game")
 if st.button("Restart Game"):
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
+    st.session_state.cumulative_hedge_position = 0
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
     st.rerun()
 
@@ -56,10 +61,11 @@ else:
     st.subheader(f"Day {day}")
     st.write(f"**Client Position:** {client_position:,}")
     st.write(f"**Open Price:** {open_price:.4f}")
-    st.write("Enter your hedge amount before revealing the market price.")
+    st.write(f"**Current Hedge Position:** {st.session_state.cumulative_hedge_position:,}")
+    st.write("Enter hedge trade amount for this period before revealing the market price.")
 
     with st.form(f"hedge_form_day_{day}"):
-        hedge_input = st.text_input("Hedge Amount", placeholder="Enter whole number")
+        hedge_input = st.text_input("Hedge Trade This Period", placeholder="Enter whole number")
         submitted = st.form_submit_button("Submit Hedge")
 
     if submitted:
@@ -70,7 +76,10 @@ else:
         elif not hedge_input.isdigit():
             st.warning("Please enter a whole number only.")
         else:
-            hedge_position = int(hedge_input)
+            hedge_trade = int(hedge_input)
+
+            st.session_state.cumulative_hedge_position += hedge_trade
+            hedge_position = st.session_state.cumulative_hedge_position
             company_position = hedge_position - client_position
 
             profit_client = (market_price - open_price) * client_position * contract_size
@@ -99,6 +108,7 @@ else:
 
             st.success(f"Day {day} completed")
             st.write(f"**Market Price revealed:** {market_price:.4f}")
+            st.write(f"**New Hedge Position:** {hedge_position:,}")
             st.write(f"**Profit Company this day:** {profit_company:,.0f}")
 
             st.session_state.current_day_index += 1
@@ -131,17 +141,59 @@ else:
     for col in game_columns[1:]:
         merged_df[col] = np.nan
 
-st.subheader("Position Chart")
-position_chart_df = merged_df[["Day", "Position Client", "Position Hedge", "Position Company"]].copy()
-position_chart_df = position_chart_df.set_index("Day")
-st.line_chart(position_chart_df)
+def make_line_chart(df, columns, title, color_map):
+    chart_df = df[["Day"] + columns].copy()
+    long_df = chart_df.melt(id_vars="Day", var_name="Series", value_name="Value")
 
-st.subheader("Profit Chart")
-profit_chart_df = merged_df[["Day", "Profit Client", "Profit Hedge", "Profit Company"]].copy()
-profit_chart_df = profit_chart_df.set_index("Day")
-st.line_chart(profit_chart_df)
+    chart = (
+        alt.Chart(long_df)
+        .mark_line(point=True, strokeWidth=3)
+        .encode(
+            x=alt.X("Day:Q", scale=alt.Scale(domain=[1, 10]), axis=alt.Axis(tickMinStep=1)),
+            y=alt.Y("Value:Q"),
+            color=alt.Color(
+                "Series:N",
+                scale=alt.Scale(
+                    domain=list(color_map.keys()),
+                    range=list(color_map.values())
+                ),
+                legend=alt.Legend(title="")
+            ),
+            tooltip=["Day", "Series", "Value"]
+        )
+        .properties(title=title, height=350)
+    )
 
-st.subheader("Price Chart")
-price_chart_df = merged_df[["Day", "Open Price", "Market Price"]].copy()
-price_chart_df = price_chart_df.set_index("Day")
-st.line_chart(price_chart_df)
+    st.altair_chart(chart, use_container_width=True)
+
+make_line_chart(
+    merged_df,
+    ["Position Client", "Position Hedge", "Position Company"],
+    "Position Chart",
+    {
+        "Position Client": "#1f77b4",
+        "Position Hedge": "#9ecae1",
+        "Position Company": "#d62728"
+    }
+)
+
+make_line_chart(
+    merged_df,
+    ["Profit Client", "Profit Hedge", "Profit Company"],
+    "Profit Chart",
+    {
+        "Profit Client": "#1f77b4",
+        "Profit Hedge": "#9ecae1",
+        "Profit Company": "#d62728"
+    }
+)
+
+make_line_chart(
+    merged_df,
+    ["Open Price", "Market Price"],
+    "Price Chart",
+    {
+        "Open Price": "#1f77b4",
+        "Market Price": "#d62728"
+    }
+)
