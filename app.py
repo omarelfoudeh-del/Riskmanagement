@@ -36,6 +36,9 @@ if "cumulative_profit_company" not in st.session_state:
 if "cumulative_hedge_position" not in st.session_state:
     st.session_state.cumulative_hedge_position = 0
 
+if "hedge_trade_input" not in st.session_state:
+    st.session_state.hedge_trade_input = 0
+
 if "game_df" not in st.session_state:
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
 
@@ -45,6 +48,7 @@ if st.button("Restart Game", use_container_width=True):
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
     st.session_state.cumulative_hedge_position = 0
+    st.session_state.hedge_trade_input = 0
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
     st.rerun()
 
@@ -64,71 +68,64 @@ else:
     st.write(f"**Client Position:** {client_position:+,}")
     st.write(f"**Open Price:** {open_price:.4f}")
     st.write(f"**Current Hedge Position:** {st.session_state.cumulative_hedge_position:+,}")
-    st.write("Choose lot size, then tap Buy or Sell.")
+    st.write("Adjust hedge trade in steps of 5. Negative means sell / short.")
 
-    with st.form(f"hedge_form_day_{day}"):
-        input_col, spacer_col = st.columns([1, 3])
+    step_col1, step_col2, value_col = st.columns([1, 1, 2])
 
-        with input_col:
-            hedge_lots = st.number_input(
-                "Lots",
-                min_value=0,
-                value=0,
-                step=5,
-                format="%d"
-            )
-
-        buy_col, sell_col = st.columns(2)
-
-        with buy_col:
-            buy_submitted = st.form_submit_button("Buy", use_container_width=True)
-
-        with sell_col:
-            sell_submitted = st.form_submit_button("Sell", use_container_width=True)
-
-    if buy_submitted or sell_submitted:
-        if hedge_lots == 0:
-            st.warning("Please choose lots greater than 0.")
-        else:
-            hedge_trade = int(hedge_lots) if buy_submitted else -int(hedge_lots)
-
-            st.session_state.cumulative_hedge_position += hedge_trade
-            hedge_position = st.session_state.cumulative_hedge_position
-
-            company_position = client_position - hedge_position
-
-            profit_client = (market_price - open_price) * client_position * contract_size
-            profit_hedge = (market_price - open_price) * hedge_position * contract_size
-            profit_company = (market_price - open_price) * company_position * contract_size
-
-            st.session_state.cumulative_profit_company += profit_company
-
-            new_row = pd.DataFrame([{
-                "Day": day,
-                "Position Client": client_position,
-                "Position Hedge": hedge_position,
-                "Position Company": company_position,
-                "Open Price": round(open_price, 4),
-                "Market Price": round(market_price, 4),
-                "Profit Client": round(profit_client, 0),
-                "Profit Hedge": round(profit_hedge, 0),
-                "Profit Company": round(profit_company, 0),
-                "Cumulative Profit Company": round(st.session_state.cumulative_profit_company, 0)
-            }])
-
-            st.session_state.game_df = pd.concat(
-                [st.session_state.game_df, new_row],
-                ignore_index=True
-            )
-
-            st.success(f"Day {day} completed")
-            st.write(f"**Market Price revealed:** {market_price:.4f}")
-            st.write(f"**Hedge Trade This Period:** {hedge_trade:+,}")
-            st.write(f"**New Hedge Position:** {hedge_position:+,}")
-            st.write(f"**Profit Company this day:** {profit_company:,.0f}")
-
-            st.session_state.current_day_index += 1
+    with step_col1:
+        if st.button("- 5", use_container_width=True):
+            st.session_state.hedge_trade_input -= 5
             st.rerun()
+
+    with step_col2:
+        if st.button("+ 5", use_container_width=True):
+            st.session_state.hedge_trade_input += 5
+            st.rerun()
+
+    with value_col:
+        st.metric("Hedge Trade This Period", f"{st.session_state.hedge_trade_input:+,}")
+
+    if st.button("Submit Hedge", use_container_width=True):
+        hedge_trade = st.session_state.hedge_trade_input
+
+        st.session_state.cumulative_hedge_position += hedge_trade
+        hedge_position = st.session_state.cumulative_hedge_position
+
+        company_position = client_position - hedge_position
+
+        profit_client = (market_price - open_price) * client_position * contract_size
+        profit_hedge = (market_price - open_price) * hedge_position * contract_size
+        profit_company = (market_price - open_price) * company_position * contract_size
+
+        st.session_state.cumulative_profit_company += profit_company
+
+        new_row = pd.DataFrame([{
+            "Day": day,
+            "Position Client": client_position,
+            "Position Hedge": hedge_position,
+            "Position Company": company_position,
+            "Open Price": round(open_price, 4),
+            "Market Price": round(market_price, 4),
+            "Profit Client": round(profit_client, 0),
+            "Profit Hedge": round(profit_hedge, 0),
+            "Profit Company": round(profit_company, 0),
+            "Cumulative Profit Company": round(st.session_state.cumulative_profit_company, 0)
+        }])
+
+        st.session_state.game_df = pd.concat(
+            [st.session_state.game_df, new_row],
+            ignore_index=True
+        )
+
+        st.success(f"Day {day} completed")
+        st.write(f"**Market Price revealed:** {market_price:.4f}")
+        st.write(f"**Hedge Trade This Period:** {hedge_trade:+,}")
+        st.write(f"**New Hedge Position:** {hedge_position:+,}")
+        st.write(f"**Profit Company this day:** {profit_company:,.0f}")
+
+        st.session_state.current_day_index += 1
+        st.session_state.hedge_trade_input = 0
+        st.rerun()
 
 st.subheader("Game Progress")
 
