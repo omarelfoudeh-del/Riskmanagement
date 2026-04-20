@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import altair as alt
 
-st.set_page_config(page_title="Risk Management Game", layout="wide")
+st.set_page_config(page_title="Risk Management Game", layout="centered")
 
 contract_size = 100000
 
@@ -41,7 +41,7 @@ if "game_df" not in st.session_state:
 
 st.title("Market Risk Management Game")
 
-if st.button("Restart Game"):
+if st.button("Restart Game", use_container_width=True):
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
     st.session_state.cumulative_hedge_position = 0
@@ -64,20 +64,27 @@ else:
     st.write(f"**Client Position:** {client_position:+,}")
     st.write(f"**Open Price:** {open_price:.4f}")
     st.write(f"**Current Hedge Position:** {st.session_state.cumulative_hedge_position:+,}")
-    st.write("Choose hedge size in lots, then click Buy or Sell.")
+    st.write("Choose lot size, then tap Buy or Sell.")
 
     with st.form(f"hedge_form_day_{day}"):
-        hedge_lots = st.selectbox(
-            "Lots to Hedge",
-            options=list(range(0, 105, 5)),
-            index=1
-        )
+        input_col, spacer_col = st.columns([1, 3])
 
-        col1, col2, col3 = st.columns([1, 1, 8])
-        with col1:
-            buy_submitted = st.form_submit_button("Buy")
-        with col2:
-            sell_submitted = st.form_submit_button("Sell")
+        with input_col:
+            hedge_lots = st.number_input(
+                "Lots",
+                min_value=0,
+                value=0,
+                step=5,
+                format="%d"
+            )
+
+        buy_col, sell_col = st.columns(2)
+
+        with buy_col:
+            buy_submitted = st.form_submit_button("Buy", use_container_width=True)
+
+        with sell_col:
+            sell_submitted = st.form_submit_button("Sell", use_container_width=True)
 
     if buy_submitted or sell_submitted:
         if hedge_lots == 0:
@@ -88,7 +95,6 @@ else:
             st.session_state.cumulative_hedge_position += hedge_trade
             hedge_position = st.session_state.cumulative_hedge_position
 
-            # Company = Client - Hedge
             company_position = client_position - hedge_position
 
             profit_client = (market_price - open_price) * client_position * contract_size
@@ -218,7 +224,7 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
                 alt.Tooltip("Value:Q", format=y_format)
             ]
         )
-        .properties(title=title, height=380)
+        .properties(title=title, height=300)
     )
 
     st.altair_chart(chart, use_container_width=True)
@@ -228,9 +234,7 @@ make_line_chart(
     merged_df,
     ["Market Price"],
     "Price Chart",
-    {
-        "Market Price": "#d62728"
-    },
+    {"Market Price": "#d62728"},
     y_domain=[1.4900, 1.5100],
     y_format=".4f"
 )
