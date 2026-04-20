@@ -154,6 +154,13 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
 if st.session_state.page == "intro":
     st.title("Market Risk Management Simulator")
 
+    # Replace this filename with your actual image file
+    # Example: put dealer_with_screens.png in the same folder as app.py
+    try:
+        st.image("dealer_with_screens.png", use_container_width=True)
+    except Exception:
+        pass
+
     st.markdown("""
 You are a **risk manager**, trying to manage the company’s **market exposure** by deciding how much to hedge clients.
 
@@ -207,46 +214,45 @@ elif st.session_state.page == "game":
             ["Market Price"],
             "Price Chart",
             {"Market Price": "#d62728"},
-            y_domain=[1.4850, 1.5150],
+            y_domain=[1.4800, 1.5200],
             y_format=".4f",
-            height=360,
+            height=380,
             show_points=False
         )
 
         pending_hedge_position = st.session_state.cumulative_hedge_position + st.session_state.hedge_trade_input
-        pending_net_position = client_position - pending_hedge_position
+        pending_company_position = pending_hedge_position - client_position
 
         summary_df = pd.DataFrame([{
             "Current Exposure": f"{client_position:+,}",
             "Hedge": f"{pending_hedge_position:+,}",
-            "Net Position": f"{pending_net_position:+,}"
+            "Net Position": f"{pending_company_position:+,}"
         }])
 
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
         st.write("Adjust hedge trade in steps of 5. Negative means sell / short.")
 
-        step_col1, step_col2, value_col = st.columns([1, 1, 2])
+        button_col1, button_col2 = st.columns(2)
 
-        with step_col1:
-            if st.button("- 5", use_container_width=True):
+        with button_col1:
+            if st.button("Sell 5", use_container_width=True):
                 st.session_state.hedge_trade_input -= 5
                 st.rerun()
 
-        with step_col2:
-            if st.button("+ 5", use_container_width=True):
+        with button_col2:
+            if st.button("Buy 5", use_container_width=True):
                 st.session_state.hedge_trade_input += 5
                 st.rerun()
-
-        with value_col:
-            st.metric("Hedge Trade", f"{st.session_state.hedge_trade_input:+,}")
 
         if st.button("Submit Hedge", use_container_width=True):
             hedge_trade = st.session_state.hedge_trade_input
             st.session_state.cumulative_hedge_position += hedge_trade
             hedge_position = st.session_state.cumulative_hedge_position
 
-            company_position = client_position - hedge_position
+            # Your sign convention:
+            # Company = Hedge - Client
+            company_position = hedge_position - client_position
 
             profit_client = (market_price - open_price) * client_position * contract_size
             profit_hedge = (market_price - open_price) * hedge_position * contract_size
