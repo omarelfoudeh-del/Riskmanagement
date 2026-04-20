@@ -48,7 +48,9 @@ if st.button("Restart Game"):
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
     st.rerun()
 
-if st.session_state.current_day_index >= len(base_df):
+game_finished = st.session_state.current_day_index >= len(base_df)
+
+if game_finished:
     st.success("Game finished.")
 else:
     row = base_df.loc[st.session_state.current_day_index]
@@ -62,25 +64,34 @@ else:
     st.write(f"**Client Position:** {client_position:,}")
     st.write(f"**Open Price:** {open_price:.4f}")
     st.write(f"**Current Hedge Position:** {st.session_state.cumulative_hedge_position:,}")
-    st.write("Enter hedge trade amount for this period before revealing the market price.")
+    st.write("Enter hedge trade size, then choose Buy or Sell.")
 
     with st.form(f"hedge_form_day_{day}"):
-        hedge_input = st.text_input("Hedge Trade This Period", placeholder="Enter whole number")
-        submitted = st.form_submit_button("Submit Hedge")
+        hedge_lots = st.number_input(
+            "Lots to Hedge",
+            min_value=0,
+            step=1,
+            value=0,
+            format="%d"
+        )
 
-    if submitted:
-        hedge_input = hedge_input.strip()
+        col1, col2 = st.columns(2)
+        with col1:
+            buy_submitted = st.form_submit_button("Buy Hedge")
+        with col2:
+            sell_submitted = st.form_submit_button("Sell Hedge")
 
-        if hedge_input == "":
-            st.warning("Please enter a hedge amount.")
-        elif not hedge_input.isdigit():
-            st.warning("Please enter a whole number only.")
+    if buy_submitted or sell_submitted:
+        if hedge_lots == 0:
+            st.warning("Please enter lots greater than 0.")
         else:
-            hedge_trade = int(hedge_input)
+            hedge_trade = int(hedge_lots) if buy_submitted else -int(hedge_lots)
 
             st.session_state.cumulative_hedge_position += hedge_trade
             hedge_position = st.session_state.cumulative_hedge_position
-            company_position = hedge_position - client_position
+
+            # Company = Client - Hedge
+            company_position = client_position - hedge_position
 
             profit_client = (market_price - open_price) * client_position * contract_size
             profit_hedge = (market_price - open_price) * hedge_position * contract_size
@@ -108,30 +119,70 @@ else:
 
             st.success(f"Day {day} completed")
             st.write(f"**Market Price revealed:** {market_price:.4f}")
+            st.write(f"**Hedge Trade This Period:** {hedge_trade:+,}")
             st.write(f"**New Hedge Position:** {hedge_position:,}")
             st.write(f"**Profit Company this day:** {profit_company:,.0f}")
 
             st.session_state.current_day_index += 1
             st.rerun()
 
-if not st.session_state.game_df.empty:
-    st.subheader("Game Progress")
+# ----------------------------
+# Game Progress table
+# ----------------------------
+st.subheader("Game Progress")
 
-    display_df = st.session_state.game_df.copy()
+display_progress_df = st.session_state.game_df.copy()
 
-    display_df["Day"] = display_df["Day"].astype(int)
-    display_df["Position Client"] = display_df["Position Client"].map(lambda x: f"{int(x):,}")
-    display_df["Position Hedge"] = display_df["Position Hedge"].map(lambda x: f"{int(x):,}")
-    display_df["Position Company"] = display_df["Position Company"].map(lambda x: f"{int(x):,}")
-    display_df["Open Price"] = display_df["Open Price"].map(lambda x: f"{float(x):.4f}")
-    display_df["Market Price"] = display_df["Market Price"].map(lambda x: f"{float(x):.4f}")
-    display_df["Profit Client"] = display_df["Profit Client"].map(lambda x: f"{int(x):,}")
-    display_df["Profit Hedge"] = display_df["Profit Hedge"].map(lambda x: f"{int(x):,}")
-    display_df["Profit Company"] = display_df["Profit Company"].map(lambda x: f"{int(x):,}")
-    display_df["Cumulative Profit Company"] = display_df["Cumulative Profit Company"].map(lambda x: f"{int(x):,}")
+# Add preview row for current period if game not finished
+if not game_finished:
+    preview_row = pd.DataFrame([{
+        "Day": int(base_df.loc[st.session_state.current_day_index, "Day"]),
+        "Position Client": int(base_df.loc[st.session_state.current_day_index, "Position Client"]),
+        "Position Hedge": np.nan,
+        "Position Company": np.nan,
+        "Open Price": float(base_df.loc[st.session_state.current_day_index, "Open Price"]),
+        "Market Price": np.nan,
+        "Profit Client": np.nan,
+        "Profit Hedge": np.nan,
+        "Profit Company": np.nan,
+        "Cumulative Profit Company": np.nan
+    }])
 
-    st.dataframe(display_df, use_container_width=True)
+    display_progress_df = pd.concat([display_progress_df, preview_row], ignore_index=True)
+    current_preview_day = int(preview_row.iloc[0]["Day"])
+else:
+    current_preview_day = None
 
+def format_int_or_blank(x):
+    return "" if pd.isna(x) else f"{int(x):,}"
+
+def format_price_or_blank(x):
+    return "" if pd.isna(x) else f"{float(x):.4f}"
+
+formatted_df = display_progress_df.copy()
+formatted_df["Day"] = formatted_df["Day"].map(lambda x: f"{int(x)}")
+formatted_df["Position Client"] = formatted_df["Position Client"].map(format_int_or_blank)
+formatted_df["Position Hedge"] = formatted_df["Position Hedge"].map(format_int_or_blank)
+formatted_df["Position Company"] = formatted_df["Position Company"].map(format_int_or_blank)
+formatted_df["Open Price"] = formatted_df["Open Price"].map(format_price_or_blank)
+formatted_df["Market Price"] = formatted_df["Market Price"].map(format_price_or_blank)
+formatted_df["Profit Client"] = formatted_df["Profit Client"].map(format_int_or_blank)
+formatted_df["Profit Hedge"] = formatted_df["Profit Hedge"].map(format_int_or_blank)
+formatted_df["Profit Company"] = formatted_df["Profit Company"].map(format_int_or_blank)
+formatted_df["Cumulative Profit Company"] = formatted_df["Cumulative Profit Company"].map(format_int_or_blank)
+
+def highlight_current_row(row):
+    if current_preview_day is not None and row["Day"] == str(current_preview_day):
+        return ["background-color: #fff3cd; font-weight: bold;"] * len(row)
+    return [""] * len(row)
+
+styled_df = formatted_df.style.apply(highlight_current_row, axis=1)
+
+st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+# ----------------------------
+# Charts
+# ----------------------------
 chart_base = pd.DataFrame({"Day": base_df["Day"]})
 
 if not st.session_state.game_df.empty:
@@ -149,7 +200,11 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
         alt.Chart(long_df)
         .mark_line(point=True, strokeWidth=3)
         .encode(
-            x=alt.X("Day:Q", scale=alt.Scale(domain=[1, 10]), axis=alt.Axis(values=list(range(1, 11)), title="Day")),
+            x=alt.X(
+                "Day:Q",
+                scale=alt.Scale(domain=[1, 10]),
+                axis=alt.Axis(values=list(range(1, 11)), title="Day")
+            ),
             y=alt.Y(
                 "Value:Q",
                 scale=alt.Scale(domain=y_domain) if y_domain else alt.Undefined,
