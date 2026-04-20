@@ -1,56 +1,57 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import altair as alt
+# ----------------------------
+# Game Progress table starting from Day 0
+# ----------------------------
+st.subheader("Game Progress")
 
-st.set_page_config(page_title="Market Risk Management Simulator", layout="centered")
+day0_table_row = pd.DataFrame([{
+    "Day": 0,
+    "Position Client": 0,
+    "Position Hedge": 0,
+    "Position Company": 0,
+    "Open Price": np.nan,
+    "Market Price": base_df.loc[0, "Open Price"],
+    "Profit Company": 0
+}])
 
-contract_size = 100000
+history_df = st.session_state.game_df.copy()
 
-base_df = pd.DataFrame({
-    "Day": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    "Position Client": [10, 20, 30, 40, 40, 30, 20, 10, 0, 0],
-    "Open Price": [1.5100, 1.5050, 1.5000, 1.4950, 1.4900, 1.4900, 1.4950, 1.5000, 1.5050, 1.5100],
-    "Market Price": [1.5050, 1.5000, 1.4950, 1.4900, 1.4900, 1.4950, 1.5000, 1.5050, 1.5100, 1.5050]
-})
+if not history_df.empty:
+    history_df = history_df[[
+        "Day",
+        "Position Client",
+        "Position Hedge",
+        "Position Company",
+        "Open Price",
+        "Market Price",
+        "Profit Company"
+    ]].copy()
+else:
+    history_df = pd.DataFrame(columns=[
+        "Day",
+        "Position Client",
+        "Position Hedge",
+        "Position Company",
+        "Open Price",
+        "Market Price",
+        "Profit Company"
+    ])
 
-game_columns = [
-    "Day",
-    "Position Client",
-    "Position Hedge",
-    "Position Company",
-    "Open Price",
-    "Market Price",
-    "Profit Client",
-    "Profit Hedge",
-    "Profit Company",
-    "Cumulative Profit Company"
-]
+history_df = pd.concat([day0_table_row, history_df], ignore_index=True)
 
-if "page" not in st.session_state:
-    st.session_state.page = "intro"
+if not game_finished:
+    preview_row = pd.DataFrame([{
+        "Day": int(base_df.loc[st.session_state.current_day_index, "Day"]),
+        "Position Client": int(base_df.loc[st.session_state.current_day_index, "Position Client"]),
+        "Position Hedge": np.nan,
+        "Position Company": np.nan,
+        "Open Price": float(base_df.loc[st.session_state.current_day_index, "Open Price"]),
+        "Market Price": np.nan,
+        "Profit Company": np.nan
+    }])
 
-if "current_day_index" not in st.session_state:
-    st.session_state.current_day_index = 0
-
-if "cumulative_profit_company" not in st.session_state:
-    st.session_state.cumulative_profit_company = 0
-
-if "cumulative_hedge_position" not in st.session_state:
-    st.session_state.cumulative_hedge_position = 0
-
-if "hedge_trade_input" not in st.session_state:
-    st.session_state.hedge_trade_input = 0
-
-if "game_df" not in st.session_state:
-    st.session_state.game_df = pd.DataFrame(columns=game_columns)
-
-def reset_game():
-    st.session_state.current_day_index = 0
-    st.session_state.cumulative_profit_company = 0
-    st.session_state.cumulative_hedge_position = 0
-    st.session_state.hedge_trade_input = 0
-    st.session_state.game_df = pd.DataFrame(columns=game_columns)
+    display_progress_df = pd.concat([history_df, preview_row], ignore_index=True)
+else:
+    display_progress_df = history_df.copy()
 
 def format_signed_int_or_blank(x):
     return "" if pd.isna(x) else f"{int(x):+,}"
@@ -61,296 +62,17 @@ def format_int_or_blank(x):
 def format_price_or_blank(x):
     return "" if pd.isna(x) else f"{float(x):.4f}"
 
-def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f", height=300):
-    chart_df = df[["Day"] + columns].copy()
+formatted_df = display_progress_df.copy()
+formatted_df["Day"] = formatted_df["Day"].map(lambda x: int(x))
+formatted_df["Position Client"] = formatted_df["Position Client"].map(format_signed_int_or_blank)
+formatted_df["Position Hedge"] = formatted_df["Position Hedge"].map(format_signed_int_or_blank)
+formatted_df["Position Company"] = formatted_df["Position Company"].map(format_signed_int_or_blank)
+formatted_df["Open Price"] = formatted_df["Open Price"].map(format_price_or_blank)
+formatted_df["Market Price"] = formatted_df["Market Price"].map(format_price_or_blank)
+formatted_df["Profit Company"] = formatted_df["Profit Company"].map(format_int_or_blank)
 
-    for col in columns:
-        chart_df[col] = pd.to_numeric(chart_df[col], errors="coerce")
-
-    long_df = chart_df.melt(id_vars="Day", var_name="Series", value_name="Value")
-
-    chart = (
-        alt.Chart(long_df)
-        .mark_line(point=True, strokeWidth=3)
-        .encode(
-            x=alt.X(
-                "Day:Q",
-                scale=alt.Scale(domain=[0, 10]),
-                axis=alt.Axis(values=list(range(0, 11)), title="Day")
-            ),
-            y=alt.Y(
-                "Value:Q",
-                scale=alt.Scale(domain=y_domain) if y_domain else alt.Undefined,
-                axis=alt.Axis(format=y_format, title=None)
-            ),
-            color=alt.Color(
-                "Series:N",
-                scale=alt.Scale(
-                    domain=list(color_map.keys()),
-                    range=list(color_map.values())
-                ),
-                legend=alt.Legend(title="", orient="bottom")
-            ),
-            tooltip=[
-                alt.Tooltip("Day:Q"),
-                alt.Tooltip("Series:N"),
-                alt.Tooltip("Value:Q", format=y_format)
-            ]
-        )
-        .properties(title=title, height=height)
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-
-# ----------------------------
-# Intro page
-# ----------------------------
-if st.session_state.page == "intro":
-    st.title("Market Risk Management Simulator")
-
-    st.markdown(
-        """
-        You are a **risk manager**.
-
-        Your job is to manage the company’s **market exposure** by deciding how much of the client flow to hedge.
-
-        Each day:
-        - clients build a position
-        - you choose the hedge trade
-        - then the market move is revealed
-        - and you see the impact on company exposure and profit & loss
-        """
-    )
-
-    if st.button("Start Game", use_container_width=True):
-        reset_game()
-        st.session_state.page = "game"
-        st.rerun()
-
-# ----------------------------
-# Game page
-# ----------------------------
-elif st.session_state.page == "game":
-    st.title("Market Risk Management Simulator")
-
-    top_col1, top_col2 = st.columns(2)
-
-    with top_col1:
-        if st.button("Back to Intro", use_container_width=True):
-            st.session_state.page = "intro"
-            st.rerun()
-
-    with top_col2:
-        if st.button("Restart Game", use_container_width=True):
-            reset_game()
-            st.rerun()
-
-    game_finished = st.session_state.current_day_index >= len(base_df)
-
-    # ----------------------------
-    # Build chart source starting from Day 0
-    # ----------------------------
-    chart_base = pd.DataFrame({"Day": list(range(0, 11))})
-
-    day0_row = pd.DataFrame([{
-        "Day": 0,
-        "Position Client": 0,
-        "Position Hedge": 0,
-        "Position Company": 0,
-        "Open Price": np.nan,
-        "Market Price": base_df.loc[0, "Open Price"],
-        "Profit Client": 0,
-        "Profit Hedge": 0,
-        "Profit Company": 0,
-        "Cumulative Profit Company": 0
-    }])
-
-    if not st.session_state.game_df.empty:
-        chart_game_df = pd.concat([day0_row, st.session_state.game_df], ignore_index=True)
-        merged_df = chart_base.merge(chart_game_df, on="Day", how="left")
-    else:
-        merged_df = chart_base.copy()
-        for col in game_columns[1:]:
-            merged_df[col] = np.nan
-        merged_df.loc[merged_df["Day"] == 0, "Position Client"] = 0
-        merged_df.loc[merged_df["Day"] == 0, "Position Hedge"] = 0
-        merged_df.loc[merged_df["Day"] == 0, "Position Company"] = 0
-        merged_df.loc[merged_df["Day"] == 0, "Profit Client"] = 0
-        merged_df.loc[merged_df["Day"] == 0, "Profit Hedge"] = 0
-        merged_df.loc[merged_df["Day"] == 0, "Profit Company"] = 0
-        merged_df.loc[merged_df["Day"] == 0, "Cumulative Profit Company"] = 0
-        merged_df.loc[merged_df["Day"] == 0, "Market Price"] = base_df.loc[0, "Open Price"]
-
-    numeric_cols = [
-        "Position Client", "Position Hedge", "Position Company",
-        "Profit Client", "Profit Hedge", "Profit Company",
-        "Open Price", "Market Price"
-    ]
-    for col in numeric_cols:
-        if col in merged_df.columns:
-            merged_df[col] = pd.to_numeric(merged_df[col], errors="coerce")
-
-    if game_finished:
-        st.success("Game finished.")
-    else:
-        row = base_df.loc[st.session_state.current_day_index]
-
-        day = int(row["Day"])
-        client_position = int(row["Position Client"])
-        market_price = float(row["Market Price"])
-
-        st.subheader(f"Day {day}")
-
-        make_line_chart(
-            merged_df,
-            ["Market Price"],
-            "Price Chart",
-            {"Market Price": "#d62728"},
-            y_domain=[1.4900, 1.5100],
-            y_format=".4f",
-            height=220
-        )
-
-        st.metric("Current Exposure", f"{st.session_state.cumulative_hedge_position:+,}")
-        st.write("Adjust hedge trade in steps of 5. Negative means sell / short.")
-
-        step_col1, step_col2, value_col = st.columns([1, 1, 2])
-
-        with step_col1:
-            if st.button("- 5", use_container_width=True):
-                st.session_state.hedge_trade_input -= 5
-                st.rerun()
-
-        with step_col2:
-            if st.button("+ 5", use_container_width=True):
-                st.session_state.hedge_trade_input += 5
-                st.rerun()
-
-        with value_col:
-            st.metric("Hedge Trade This Period", f"{st.session_state.hedge_trade_input:+,}")
-
-        if st.button("Submit Hedge", use_container_width=True):
-            hedge_trade = st.session_state.hedge_trade_input
-            st.session_state.cumulative_hedge_position += hedge_trade
-            hedge_position = st.session_state.cumulative_hedge_position
-
-            company_position = client_position - hedge_position
-
-            open_price = float(row["Open Price"])
-            profit_client = (market_price - open_price) * client_position * contract_size
-            profit_hedge = (market_price - open_price) * hedge_position * contract_size
-            profit_company = (market_price - open_price) * company_position * contract_size
-
-            st.session_state.cumulative_profit_company += profit_company
-
-            new_row = pd.DataFrame([{
-                "Day": day,
-                "Position Client": client_position,
-                "Position Hedge": hedge_position,
-                "Position Company": company_position,
-                "Open Price": round(open_price, 4),
-                "Market Price": round(market_price, 4),
-                "Profit Client": round(profit_client, 0),
-                "Profit Hedge": round(profit_hedge, 0),
-                "Profit Company": round(profit_company, 0),
-                "Cumulative Profit Company": round(st.session_state.cumulative_profit_company, 0)
-            }])
-
-            st.session_state.game_df = pd.concat(
-                [st.session_state.game_df, new_row],
-                ignore_index=True
-            )
-
-            st.session_state.current_day_index += 1
-            st.session_state.hedge_trade_input = 0
-            st.rerun()
-
-    # ----------------------------
-    # Game Progress table starting from Day 0
-    # ----------------------------
-    st.subheader("Game Progress")
-
-    day0_table_row = pd.DataFrame([{
-        "Day": 0,
-        "Position Client": 0,
-        "Position Hedge": 0,
-        "Position Company": 0,
-        "Open Price": np.nan,
-        "Market Price": base_df.loc[0, "Open Price"],
-        "Profit Company": 0
-    }])
-
-    history_df = st.session_state.game_df.copy()
-
-    if not history_df.empty:
-        history_df = history_df[[
-            "Day",
-            "Position Client",
-            "Position Hedge",
-            "Position Company",
-            "Open Price",
-            "Market Price",
-            "Profit Company"
-        ]].copy()
-
-    history_df = pd.concat([day0_table_row, history_df], ignore_index=True)
-
-    if not game_finished:
-        preview_row = pd.DataFrame([{
-            "Day": int(base_df.loc[st.session_state.current_day_index, "Day"]),
-            "Position Client": int(base_df.loc[st.session_state.current_day_index, "Position Client"]),
-            "Position Hedge": np.nan,
-            "Position Company": np.nan,
-            "Open Price": float(base_df.loc[st.session_state.current_day_index, "Open Price"]),
-            "Market Price": np.nan,
-            "Profit Company": np.nan
-        }])
-
-        display_progress_df = pd.concat([history_df, preview_row], ignore_index=True)
-        current_preview_day = int(preview_row.iloc[0]["Day"])
-    else:
-        display_progress_df = history_df.copy()
-        current_preview_day = None
-
-    formatted_df = display_progress_df.copy()
-    formatted_df["Day"] = formatted_df["Day"].map(lambda x: f"{int(x)}")
-    formatted_df["Position Client"] = formatted_df["Position Client"].map(format_signed_int_or_blank)
-    formatted_df["Position Hedge"] = formatted_df["Position Hedge"].map(format_signed_int_or_blank)
-    formatted_df["Position Company"] = formatted_df["Position Company"].map(format_signed_int_or_blank)
-    formatted_df["Open Price"] = formatted_df["Open Price"].map(format_price_or_blank)
-    formatted_df["Market Price"] = formatted_df["Market Price"].map(format_price_or_blank)
-    formatted_df["Profit Company"] = formatted_df["Profit Company"].map(format_int_or_blank)
-
-    def highlight_current_row(row):
-        if current_preview_day is not None and row["Day"] == str(current_preview_day):
-            return ["background-color: #fff3cd; font-weight: bold;"] * len(row)
-        return [""] * len(row)
-
-    styled_df = formatted_df.style.apply(highlight_current_row, axis=1)
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
-    st.subheader("Position Chart")
-    make_line_chart(
-        merged_df,
-        ["Position Client", "Position Hedge", "Position Company"],
-        "Position Chart",
-        {
-            "Position Client": "#1f77b4",
-            "Position Hedge": "#9ecae1",
-            "Position Company": "#d62728"
-        },
-        y_format=",.0f"
-    )
-
-    st.subheader("Profit Chart")
-    make_line_chart(
-        merged_df,
-        ["Profit Client", "Profit Hedge", "Profit Company"],
-        "Profit Chart",
-        {
-            "Profit Client": "#1f77b4",
-            "Profit Hedge": "#9ecae1",
-            "Profit Company": "#d62728"
-        },
-        y_format=",.0f"
-    )
+st.dataframe(
+    formatted_df,
+    use_container_width=True,
+    hide_index=True
+)
