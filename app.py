@@ -27,9 +27,6 @@ game_columns = [
     "Cumulative Profit Company"
 ]
 
-# ----------------------------
-# Session state
-# ----------------------------
 if "page" not in st.session_state:
     st.session_state.page = "intro"
 
@@ -48,9 +45,6 @@ if "hedge_trade_input" not in st.session_state:
 if "game_df" not in st.session_state:
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
 
-# ----------------------------
-# Helpers
-# ----------------------------
 def reset_game():
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
@@ -58,17 +52,18 @@ def reset_game():
     st.session_state.hedge_trade_input = 0
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
 
-def format_signed_int_or_blank(x):
-    return "" if pd.isna(x) else f"{int(x):+,}"
+def format_price_or_blank(x):
+    return "" if pd.isna(x) else f"{float(x):.4f}"
 
 def format_int_or_blank(x):
     return "" if pd.isna(x) else f"{int(x):,}"
 
-def format_price_or_blank(x):
-    return "" if pd.isna(x) else f"{float(x):.4f}"
-
-def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f"):
+def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f", height=300):
     chart_df = df[["Day"] + columns].copy()
+
+    for col in columns:
+        chart_df[col] = pd.to_numeric(chart_df[col], errors="coerce")
+
     long_df = chart_df.melt(id_vars="Day", var_name="Series", value_name="Value")
 
     chart = (
@@ -99,7 +94,7 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
                 alt.Tooltip("Value:Q", format=y_format)
             ]
         )
-        .properties(title=title, height=300)
+        .properties(title=title, height=height)
     )
 
     st.altair_chart(chart, use_container_width=True)
@@ -117,25 +112,16 @@ if st.session_state.page == "intro":
         Your job is to manage the company’s **market exposure** by deciding how much of the client flow to hedge.
 
         Each day:
-        - you see the **open price**
         - you decide the **hedge trade**
         - then the market move is revealed
         - and you see the impact on **exposure** and **profit & loss**
         """
     )
 
-    col1, col2 = st.columns([1, 1])
-
-    with col1:
-        if st.button("Start Game", use_container_width=True):
-            reset_game()
-            st.session_state.page = "game"
-            st.rerun()
-
-    with col2:
-        if st.button("Reset", use_container_width=True):
-            reset_game()
-            st.rerun()
+    if st.button("Start Game", use_container_width=True):
+        reset_game()
+        st.session_state.page = "game"
+        st.rerun()
 
 # ----------------------------
 # Game page
@@ -157,6 +143,26 @@ elif st.session_state.page == "game":
 
     game_finished = st.session_state.current_day_index >= len(base_df)
 
+    # chart source
+    chart_base = pd.DataFrame({"Day": base_df["Day"]})
+
+    if not st.session_state.game_df.empty:
+        merged_df = chart_base.merge(st.session_state.game_df, on="Day", how="left")
+    else:
+        merged_df = chart_base.copy()
+        for col in game_columns[1:]:
+            merged_df[col] = np.nan
+
+    # make sure chart columns stay numeric
+    numeric_cols = [
+        "Position Client", "Position Hedge", "Position Company",
+        "Profit Client", "Profit Hedge", "Profit Company",
+        "Open Price", "Market Price"
+    ]
+    for col in numeric_cols:
+        if col in merged_df.columns:
+            merged_df[col] = pd.to_numeric(merged_df[col], errors="coerce")
+
     if game_finished:
         st.success("Game finished.")
     else:
@@ -164,12 +170,22 @@ elif st.session_state.page == "game":
 
         day = int(row["Day"])
         client_position = int(row["Position Client"])
-        open_price = float(row["Open Price"])
         market_price = float(row["Market Price"])
 
         st.subheader(f"Day {day}")
-        st.write(f"**Open Price:** {open_price:.4f}")
-        st.write(f"**Current Exposure:** {st.session_state.cumulative_hedge_position:+,}")
+
+        # small price chart inside input panel
+        make_line_chart(
+            merged_df,
+            ["Market Price"],
+            "Price Chart",
+            {"Market Price": "#d62728"},
+            y_domain=[1.4900, 1.5100],
+            y_format=".4f",
+            height=220
+        )
+
+        st.metric("Current Exposure", f"{st.session_state.cumulative_hedge_position:+,}")
         st.write("Adjust hedge trade in steps of 5. Negative means sell / short.")
 
         step_col1, step_col2, value_col = st.columns([1, 1, 2])
@@ -194,6 +210,7 @@ elif st.session_state.page == "game":
 
             company_position = client_position - hedge_position
 
+            open_price = float(row["Open Price"])
             profit_client = (market_price - open_price) * client_position * contract_size
             profit_hedge = (market_price - open_price) * hedge_position * contract_size
             profit_company = (market_price - open_price) * company_position * contract_size
@@ -224,38 +241,38 @@ elif st.session_state.page == "game":
 
     st.subheader("Game Progress")
 
-    display_progress_df = st.session_state.game_df.copy()
+    history_df = st.session_state.game_df.copy()
+
+    if not history_df.empty:
+        history_df = history_df[["Day", "Open Price", "Market Price", "Profit Company"]].copy()
 
     if not game_finished:
         preview_row = pd.DataFrame([{
             "Day": int(base_df.loc[st.session_state.current_day_index, "Day"]),
-            "Position Client": int(base_df.loc[st.session_state.current_day_index, "Position Client"]),
-            "Position Hedge": np.nan,
-            "Position Company": np.nan,
             "Open Price": float(base_df.loc[st.session_state.current_day_index, "Open Price"]),
             "Market Price": np.nan,
-            "Profit Client": np.nan,
-            "Profit Hedge": np.nan,
-            "Profit Company": np.nan,
-            "Cumulative Profit Company": np.nan
+            "Profit Company": np.nan
         }])
 
-        display_progress_df = pd.concat([display_progress_df, preview_row], ignore_index=True)
+        if history_df.empty:
+            display_progress_df = preview_row.copy()
+        else:
+            display_progress_df = pd.concat([history_df, preview_row], ignore_index=True)
+
         current_preview_day = int(preview_row.iloc[0]["Day"])
     else:
+        display_progress_df = history_df.copy()
         current_preview_day = None
+
+    display_progress_df = display_progress_df.rename(columns={
+        "Profit Company": "Position Net"
+    })
 
     formatted_df = display_progress_df.copy()
     formatted_df["Day"] = formatted_df["Day"].map(lambda x: f"{int(x)}")
-    formatted_df["Position Client"] = formatted_df["Position Client"].map(format_signed_int_or_blank)
-    formatted_df["Position Hedge"] = formatted_df["Position Hedge"].map(format_signed_int_or_blank)
-    formatted_df["Position Company"] = formatted_df["Position Company"].map(format_signed_int_or_blank)
     formatted_df["Open Price"] = formatted_df["Open Price"].map(format_price_or_blank)
     formatted_df["Market Price"] = formatted_df["Market Price"].map(format_price_or_blank)
-    formatted_df["Profit Client"] = formatted_df["Profit Client"].map(format_int_or_blank)
-    formatted_df["Profit Hedge"] = formatted_df["Profit Hedge"].map(format_int_or_blank)
-    formatted_df["Profit Company"] = formatted_df["Profit Company"].map(format_int_or_blank)
-    formatted_df["Cumulative Profit Company"] = formatted_df["Cumulative Profit Company"].map(format_int_or_blank)
+    formatted_df["Position Net"] = formatted_df["Position Net"].map(format_int_or_blank)
 
     def highlight_current_row(row):
         if current_preview_day is not None and row["Day"] == str(current_preview_day):
@@ -264,25 +281,6 @@ elif st.session_state.page == "game":
 
     styled_df = formatted_df.style.apply(highlight_current_row, axis=1)
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
-
-    chart_base = pd.DataFrame({"Day": base_df["Day"]})
-
-    if not st.session_state.game_df.empty:
-        merged_df = chart_base.merge(st.session_state.game_df, on="Day", how="left")
-    else:
-        merged_df = chart_base.copy()
-        for col in game_columns[1:]:
-            merged_df[col] = np.nan
-
-    st.subheader("Price Chart")
-    make_line_chart(
-        merged_df,
-        ["Market Price"],
-        "Price Chart",
-        {"Market Price": "#d62728"},
-        y_domain=[1.4900, 1.5100],
-        y_format=".4f"
-    )
 
     st.subheader("Position Chart")
     make_line_chart(
