@@ -27,9 +27,6 @@ game_columns = [
     "Cumulative Profit Company"
 ]
 
-# --------------------------------------------------
-# Session state
-# --------------------------------------------------
 if "page" not in st.session_state:
     st.session_state.page = "intro"
 
@@ -48,9 +45,6 @@ if "hedge_trade_input" not in st.session_state:
 if "game_df" not in st.session_state:
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
 
-# --------------------------------------------------
-# Helpers
-# --------------------------------------------------
 def reset_game():
     st.session_state.current_day_index = 0
     st.session_state.cumulative_profit_company = 0
@@ -103,13 +97,36 @@ def build_chart_df():
 
     return merged_df
 
-def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f", height=280, show_points=True):
+def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f", height=280, show_points=True, show_legend=True):
     chart_df = df[["Day"] + columns].copy()
 
     for col in columns:
         chart_df[col] = pd.to_numeric(chart_df[col], errors="coerce")
 
     long_df = chart_df.melt(id_vars="Day", var_name="Series", value_name="Value")
+
+    if show_legend:
+        color_encoding = alt.Color(
+            "Series:N",
+            scale=alt.Scale(
+                domain=list(color_map.keys()),
+                range=list(color_map.values())
+            ),
+            legend=alt.Legend(
+                title="",
+                orient="bottom",
+                direction="horizontal"
+            )
+        )
+    else:
+        color_encoding = alt.Color(
+            "Series:N",
+            scale=alt.Scale(
+                domain=list(color_map.keys()),
+                range=list(color_map.values())
+            ),
+            legend=None
+        )
 
     chart = (
         alt.Chart(long_df)
@@ -125,18 +142,7 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
                 scale=alt.Scale(domain=y_domain) if y_domain else alt.Undefined,
                 axis=alt.Axis(format=y_format, title=None)
             ),
-            color=alt.Color(
-                "Series:N",
-                scale=alt.Scale(
-                    domain=list(color_map.keys()),
-                    range=list(color_map.values())
-                ),
-                legend=alt.Legend(
-                    title="",
-                    orient="bottom",
-                    direction="horizontal"
-                )
-            ),
+            color=color_encoding,
             tooltip=[
                 alt.Tooltip("Day:Q"),
                 alt.Tooltip("Series:N"),
@@ -148,9 +154,6 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
 
     st.altair_chart(chart, use_container_width=True)
 
-# --------------------------------------------------
-# Intro page
-# --------------------------------------------------
 if st.session_state.page == "intro":
     st.title("Market Risk Management Simulator")
 
@@ -174,9 +177,6 @@ Each day:
         st.session_state.page = "game"
         st.rerun()
 
-# --------------------------------------------------
-# Game page
-# --------------------------------------------------
 elif st.session_state.page == "game":
     st.title("Market Risk Management Simulator")
 
@@ -195,7 +195,6 @@ elif st.session_state.page == "game":
     game_finished = st.session_state.current_day_index >= len(base_df)
     merged_df = build_chart_df()
 
-    # Price chart always stays visible
     st.subheader("Price Chart")
     make_line_chart(
         merged_df,
@@ -205,7 +204,8 @@ elif st.session_state.page == "game":
         y_domain=[1.4800, 1.5200],
         y_format=".4f",
         height=380,
-        show_points=False
+        show_points=False,
+        show_legend=False
     )
 
     if game_finished:
@@ -257,7 +257,6 @@ elif st.session_state.page == "game":
             st.session_state.cumulative_hedge_position += hedge_trade
             hedge_position = st.session_state.cumulative_hedge_position
 
-            # Company = Hedge - Client
             company_position = hedge_position - client_position
 
             profit_client = (market_price - open_price) * client_position * contract_size
@@ -288,9 +287,6 @@ elif st.session_state.page == "game":
             st.session_state.hedge_trade_input = 0
             st.rerun()
 
-    # --------------------------------------------------
-    # Game Progress table
-    # --------------------------------------------------
     st.subheader("Game Progress")
 
     day0_table_row = pd.DataFrame([{
@@ -343,9 +339,6 @@ elif st.session_state.page == "game":
         hide_index=True
     )
 
-    # --------------------------------------------------
-    # Charts
-    # --------------------------------------------------
     st.subheader("Position Chart")
     make_line_chart(
         merged_df,
