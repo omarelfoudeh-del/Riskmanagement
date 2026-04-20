@@ -154,12 +154,10 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
 if st.session_state.page == "intro":
     st.title("Market Risk Management Simulator")
 
-    # Replace this filename with your actual image file
-    # Example: put dealer_with_screens.png in the same folder as app.py
     try:
-        st.image("dealer_with_screens.png", use_container_width=True)
+        st.image("dealer.png", use_container_width=True)
     except Exception:
-        pass
+        st.info("Add your image file as dealer.png in the app folder.")
 
     st.markdown("""
 You are a **risk manager**, trying to manage the company’s **market exposure** by deciding how much to hedge clients.
@@ -197,8 +195,28 @@ elif st.session_state.page == "game":
     game_finished = st.session_state.current_day_index >= len(base_df)
     merged_df = build_chart_df()
 
+    # Price chart always stays visible
+    st.subheader("Price Chart")
+    make_line_chart(
+        merged_df,
+        ["Market Price"],
+        "Price Chart",
+        {"Market Price": "#d62728"},
+        y_domain=[1.4800, 1.5200],
+        y_format=".4f",
+        height=380,
+        show_points=False
+    )
+
     if game_finished:
-        st.success("Game finished.")
+        final_profit = st.session_state.cumulative_profit_company
+
+        if final_profit > 0:
+            st.success(f"Congratulations. Final cumulative company profit: {final_profit:,.0f}")
+        elif final_profit < 0:
+            st.error(f"Game finished. Final cumulative company loss: {final_profit:,.0f}")
+        else:
+            st.info("Game finished. Final cumulative company profit: 0")
     else:
         row = base_df.loc[st.session_state.current_day_index]
 
@@ -208,17 +226,6 @@ elif st.session_state.page == "game":
         market_price = float(row["Market Price"])
 
         st.subheader(f"Day {day}")
-
-        make_line_chart(
-            merged_df,
-            ["Market Price"],
-            "Price Chart",
-            {"Market Price": "#d62728"},
-            y_domain=[1.4800, 1.5200],
-            y_format=".4f",
-            height=380,
-            show_points=False
-        )
 
         pending_hedge_position = st.session_state.cumulative_hedge_position + st.session_state.hedge_trade_input
         pending_company_position = pending_hedge_position - client_position
@@ -250,7 +257,6 @@ elif st.session_state.page == "game":
             st.session_state.cumulative_hedge_position += hedge_trade
             hedge_position = st.session_state.cumulative_hedge_position
 
-            # Your sign convention:
             # Company = Hedge - Client
             company_position = hedge_position - client_position
 
