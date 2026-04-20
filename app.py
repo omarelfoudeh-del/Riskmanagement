@@ -103,7 +103,7 @@ def build_chart_df():
 
     return merged_df
 
-def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f", height=280):
+def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f", height=280, show_points=True):
     chart_df = df[["Day"] + columns].copy()
 
     for col in columns:
@@ -113,7 +113,7 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
 
     chart = (
         alt.Chart(long_df)
-        .mark_line(point=True, strokeWidth=3)
+        .mark_line(strokeWidth=3, point=show_points)
         .encode(
             x=alt.X(
                 "Day:Q",
@@ -207,12 +207,22 @@ elif st.session_state.page == "game":
             ["Market Price"],
             "Price Chart",
             {"Market Price": "#d62728"},
-            y_domain=[1.4900, 1.5100],
+            y_domain=[1.4850, 1.5150],
             y_format=".4f",
-            height=220
+            height=360,
+            show_points=False
         )
 
-        st.metric("Current Exposure", f"{st.session_state.cumulative_hedge_position:+,}")
+        pending_hedge_position = st.session_state.cumulative_hedge_position + st.session_state.hedge_trade_input
+        pending_net_position = client_position - pending_hedge_position
+
+        summary_df = pd.DataFrame([{
+            "Current Exposure": f"{client_position:+,}",
+            "Hedge": f"{pending_hedge_position:+,}",
+            "Net Position": f"{pending_net_position:+,}"
+        }])
+
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
         st.write("Adjust hedge trade in steps of 5. Negative means sell / short.")
 
@@ -229,11 +239,10 @@ elif st.session_state.page == "game":
                 st.rerun()
 
         with value_col:
-            st.metric("Hedge Trade This Period", f"{st.session_state.hedge_trade_input:+,}")
+            st.metric("Hedge Trade", f"{st.session_state.hedge_trade_input:+,}")
 
         if st.button("Submit Hedge", use_container_width=True):
             hedge_trade = st.session_state.hedge_trade_input
-
             st.session_state.cumulative_hedge_position += hedge_trade
             hedge_position = st.session_state.cumulative_hedge_position
 
@@ -305,22 +314,7 @@ elif st.session_state.page == "game":
             "Profit Company"
         ])
 
-    history_df = pd.concat([day0_table_row, history_df], ignore_index=True)
-
-    if not game_finished:
-        preview_row = pd.DataFrame([{
-            "Day": int(base_df.loc[st.session_state.current_day_index, "Day"]),
-            "Position Client": int(base_df.loc[st.session_state.current_day_index, "Position Client"]),
-            "Position Hedge": np.nan,
-            "Position Company": np.nan,
-            "Open Price": float(base_df.loc[st.session_state.current_day_index, "Open Price"]),
-            "Market Price": np.nan,
-            "Profit Company": np.nan
-        }])
-
-        display_progress_df = pd.concat([history_df, preview_row], ignore_index=True)
-    else:
-        display_progress_df = history_df.copy()
+    display_progress_df = pd.concat([day0_table_row, history_df], ignore_index=True)
 
     formatted_df = display_progress_df.copy()
     formatted_df["Day"] = formatted_df["Day"].map(lambda x: int(x))
