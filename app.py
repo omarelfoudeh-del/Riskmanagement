@@ -155,9 +155,9 @@ if st.session_state.page == "intro":
     st.title("Market Risk Management Simulator")
 
     try:
-        st.image("dealer.png", use_container_width=True)
+        st.image("nn.png", use_container_width=True)
     except Exception:
-        st.info("Add your image file as dealer.png in the app folder.")
+        st.info("Add your image file as nn.png in the app folder.")
 
     st.markdown("""
 You are a **risk manager**, trying to manage the company’s **market exposure** by deciding how much to hedge clients.
