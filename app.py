@@ -91,7 +91,7 @@ else:
             hedge_position = st.session_state.cumulative_hedge_position
 
             # Company = Client - Hedge
-            company_position = client_position - hedge_position
+            company_position = hedge_position - client_position
 
             profit_client = (market_price - open_price) * client_position * contract_size
             profit_hedge = (market_price - open_price) * hedge_position * contract_size
