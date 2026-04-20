@@ -52,11 +52,14 @@ def reset_game():
     st.session_state.hedge_trade_input = 0
     st.session_state.game_df = pd.DataFrame(columns=game_columns)
 
-def format_price_or_blank(x):
-    return "" if pd.isna(x) else f"{float(x):.4f}"
+def format_signed_int_or_blank(x):
+    return "" if pd.isna(x) else f"{int(x):+,}"
 
 def format_int_or_blank(x):
     return "" if pd.isna(x) else f"{int(x):,}"
+
+def format_price_or_blank(x):
+    return "" if pd.isna(x) else f"{float(x):.4f}"
 
 def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f", height=300):
     chart_df = df[["Day"] + columns].copy()
@@ -72,8 +75,8 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
         .encode(
             x=alt.X(
                 "Day:Q",
-                scale=alt.Scale(domain=[1, 10]),
-                axis=alt.Axis(values=list(range(1, 11)), title="Day")
+                scale=alt.Scale(domain=[0, 10]),
+                axis=alt.Axis(values=list(range(0, 11)), title="Day")
             ),
             y=alt.Y(
                 "Value:Q",
@@ -86,7 +89,7 @@ def make_line_chart(df, columns, title, color_map, y_domain=None, y_format=",.0f
                     domain=list(color_map.keys()),
                     range=list(color_map.values())
                 ),
-                legend=alt.Legend(title="")
+                legend=alt.Legend(title="", orient="bottom")
             ),
             tooltip=[
                 alt.Tooltip("Day:Q"),
@@ -112,9 +115,10 @@ if st.session_state.page == "intro":
         Your job is to manage the company’s **market exposure** by deciding how much of the client flow to hedge.
 
         Each day:
-        - you decide the **hedge trade**
+        - clients build a position
+        - you choose the hedge trade
         - then the market move is revealed
-        - and you see the impact on **exposure** and **profit & loss**
+        - and you see the impact on company exposure and profit & loss
         """
     )
 
@@ -143,17 +147,40 @@ elif st.session_state.page == "game":
 
     game_finished = st.session_state.current_day_index >= len(base_df)
 
-    # chart source
-    chart_base = pd.DataFrame({"Day": base_df["Day"]})
+    # ----------------------------
+    # Build chart source starting from Day 0
+    # ----------------------------
+    chart_base = pd.DataFrame({"Day": list(range(0, 11))})
+
+    day0_row = pd.DataFrame([{
+        "Day": 0,
+        "Position Client": 0,
+        "Position Hedge": 0,
+        "Position Company": 0,
+        "Open Price": np.nan,
+        "Market Price": base_df.loc[0, "Open Price"],
+        "Profit Client": 0,
+        "Profit Hedge": 0,
+        "Profit Company": 0,
+        "Cumulative Profit Company": 0
+    }])
 
     if not st.session_state.game_df.empty:
-        merged_df = chart_base.merge(st.session_state.game_df, on="Day", how="left")
+        chart_game_df = pd.concat([day0_row, st.session_state.game_df], ignore_index=True)
+        merged_df = chart_base.merge(chart_game_df, on="Day", how="left")
     else:
         merged_df = chart_base.copy()
         for col in game_columns[1:]:
             merged_df[col] = np.nan
+        merged_df.loc[merged_df["Day"] == 0, "Position Client"] = 0
+        merged_df.loc[merged_df["Day"] == 0, "Position Hedge"] = 0
+        merged_df.loc[merged_df["Day"] == 0, "Position Company"] = 0
+        merged_df.loc[merged_df["Day"] == 0, "Profit Client"] = 0
+        merged_df.loc[merged_df["Day"] == 0, "Profit Hedge"] = 0
+        merged_df.loc[merged_df["Day"] == 0, "Profit Company"] = 0
+        merged_df.loc[merged_df["Day"] == 0, "Cumulative Profit Company"] = 0
+        merged_df.loc[merged_df["Day"] == 0, "Market Price"] = base_df.loc[0, "Open Price"]
 
-    # make sure chart columns stay numeric
     numeric_cols = [
         "Position Client", "Position Hedge", "Position Company",
         "Profit Client", "Profit Hedge", "Profit Company",
@@ -174,7 +201,6 @@ elif st.session_state.page == "game":
 
         st.subheader(f"Day {day}")
 
-        # small price chart inside input panel
         make_line_chart(
             merged_df,
             ["Market Price"],
@@ -239,40 +265,61 @@ elif st.session_state.page == "game":
             st.session_state.hedge_trade_input = 0
             st.rerun()
 
+    # ----------------------------
+    # Game Progress table starting from Day 0
+    # ----------------------------
     st.subheader("Game Progress")
+
+    day0_table_row = pd.DataFrame([{
+        "Day": 0,
+        "Position Client": 0,
+        "Position Hedge": 0,
+        "Position Company": 0,
+        "Open Price": np.nan,
+        "Market Price": base_df.loc[0, "Open Price"],
+        "Profit Company": 0
+    }])
 
     history_df = st.session_state.game_df.copy()
 
     if not history_df.empty:
-        history_df = history_df[["Day", "Open Price", "Market Price", "Profit Company"]].copy()
+        history_df = history_df[[
+            "Day",
+            "Position Client",
+            "Position Hedge",
+            "Position Company",
+            "Open Price",
+            "Market Price",
+            "Profit Company"
+        ]].copy()
+
+    history_df = pd.concat([day0_table_row, history_df], ignore_index=True)
 
     if not game_finished:
         preview_row = pd.DataFrame([{
             "Day": int(base_df.loc[st.session_state.current_day_index, "Day"]),
+            "Position Client": int(base_df.loc[st.session_state.current_day_index, "Position Client"]),
+            "Position Hedge": np.nan,
+            "Position Company": np.nan,
             "Open Price": float(base_df.loc[st.session_state.current_day_index, "Open Price"]),
             "Market Price": np.nan,
             "Profit Company": np.nan
         }])
 
-        if history_df.empty:
-            display_progress_df = preview_row.copy()
-        else:
-            display_progress_df = pd.concat([history_df, preview_row], ignore_index=True)
-
+        display_progress_df = pd.concat([history_df, preview_row], ignore_index=True)
         current_preview_day = int(preview_row.iloc[0]["Day"])
     else:
         display_progress_df = history_df.copy()
         current_preview_day = None
 
-    display_progress_df = display_progress_df.rename(columns={
-        "Profit Company": "Position Net"
-    })
-
     formatted_df = display_progress_df.copy()
     formatted_df["Day"] = formatted_df["Day"].map(lambda x: f"{int(x)}")
+    formatted_df["Position Client"] = formatted_df["Position Client"].map(format_signed_int_or_blank)
+    formatted_df["Position Hedge"] = formatted_df["Position Hedge"].map(format_signed_int_or_blank)
+    formatted_df["Position Company"] = formatted_df["Position Company"].map(format_signed_int_or_blank)
     formatted_df["Open Price"] = formatted_df["Open Price"].map(format_price_or_blank)
     formatted_df["Market Price"] = formatted_df["Market Price"].map(format_price_or_blank)
-    formatted_df["Position Net"] = formatted_df["Position Net"].map(format_int_or_blank)
+    formatted_df["Profit Company"] = formatted_df["Profit Company"].map(format_int_or_blank)
 
     def highlight_current_row(row):
         if current_preview_day is not None and row["Day"] == str(current_preview_day):
